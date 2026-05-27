@@ -201,40 +201,45 @@ export default function PreviewPanel({ content, pages: requestedPages = 1 }) {
                 {/* 첫 페이지: 제목 박스 + 요약 박스 */}
                 {pgIdx === 0 && title && (
                   <>
-                    {/* 제목 박스 */}
+                    {/* 제목 박스 — template_box_head_01 디자인 */}
                     <div style={{
-                      border: '2px solid #1a3a6b',
-                      padding: '8pt 12pt',
+                      border: '2px solid #000',
+                      padding: '10pt 14pt',
                       textAlign: 'center',
-                      marginBottom: '6pt',
-                      fontFamily: "'HY헤드라인M', 'HYHeadLineM', sans-serif",
-                      fontSize: '22pt',
+                      marginBottom: '8pt',
+                      fontFamily: "'HY헤드라인M', 'HYHeadLineM', 'NanumGothic', sans-serif",
+                      fontSize: '20pt',
                       fontWeight: 'bold',
-                      color: '#1a3a6b',
+                      color: '#000',
                       lineHeight: '140%',
                     }}>
                       {title}
                     </div>
 
-                    {/* 요약 박스 */}
-                    {summary && (
-                      <div style={{
-                        border: '1px solid #B8D4EC',
-                        background: '#EAF2FA',
-                        padding: '8pt 14pt',
-                        marginBottom: '10pt',
-                        fontFamily: "'휴먼명조', 'HumanMyeongjo', serif",
-                        fontSize: '15pt',
-                        lineHeight: '160%',
-                        color: '#000',
-                      }}>
-                        {summary.split('\n').map((line, i) => (
-                          <div key={i} style={{ marginTop: i > 0 ? '4pt' : 0 }}>
-                            {renderInline(line)}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    {/* 요약 박스 — template_box_summary_01 디자인
+                        border: #99CCFF / fill: #F1F1F1→#FFFFFF gradient / bullet: ◈ */}
+                    <div style={{
+                      border: '1px solid #99CCFF',
+                      background: 'linear-gradient(160deg, #F1F1F1 0%, #FFFFFF 100%)',
+                      padding: '8pt 14pt',
+                      marginBottom: '10pt',
+                      fontFamily: "'휴먼명조', 'HumanMyeongjo', 'NanumMyeongjo', serif",
+                      fontSize: '14pt',
+                      lineHeight: '160%',
+                      color: '#000',
+                    }}>
+                      {summary
+                        ? summary.split('\n').map((line, i) => {
+                            const text = line.replace(/^ㅁ\s*/, '')
+                            return (
+                              <div key={i} style={{ marginTop: i > 0 ? '4pt' : 0 }}>
+                                ◈ {renderInline(text)}
+                              </div>
+                            )
+                          })
+                        : <div style={{ color: '#aaa' }}>◈ 요약 없음</div>
+                      }
+                    </div>
                   </>
                 )}
 

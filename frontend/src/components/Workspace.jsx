@@ -13,17 +13,32 @@ const WELCOME = {
   C: '보고서의 목적과 핵심 내용을 자유롭게 입력해주세요.',
 }
 
+function loadState(mode) {
+  try {
+    const saved = localStorage.getItem(`kw_ws_${mode}`)
+    if (saved) return JSON.parse(saved)
+  } catch {}
+  return null
+}
+
 export default function Workspace({ mode, onBack }) {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: WELCOME[mode] },
-  ])
-  const [report, setReport]       = useState('')
-  const [isMock, setIsMock]       = useState(false)
-  const [pages, setPages]         = useState(1)
+  const saved = loadState(mode)
+
+  const [messages, setMessages] = useState(
+    saved?.messages ?? [{ role: 'assistant', content: WELCOME[mode] }]
+  )
+  const [report, setReport]       = useState(saved?.report ?? '')
+  const [isMock, setIsMock]       = useState(saved?.isMock ?? false)
+  const [pages, setPages]         = useState(saved?.pages ?? 1)
   const [loading, setLoading]     = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const [elapsed, setElapsed]     = useState(0)   // 경과 시간(초)
+  const [elapsed, setElapsed]     = useState(0)
   const timerRef                  = useRef(null)
+
+  // 상태 변경될 때마다 localStorage에 저장
+  useEffect(() => {
+    localStorage.setItem(`kw_ws_${mode}`, JSON.stringify({ messages, report, isMock, pages }))
+  }, [messages, report, isMock, pages, mode])
 
   // loading 상태에 따라 타이머 시작/정지
   useEffect(() => {
@@ -50,7 +65,13 @@ export default function Workspace({ mode, onBack }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: report, title: reportTitle }),
       })
-      if (!res.ok) throw new Error(`서버 오류: ${res.status}`)
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        let detail = `서버 오류: ${res.status}`
+        try { detail = JSON.parse(text).detail || detail } catch {}
+        console.error('HWPX export 실패:', res.status, text)
+        throw new Error(detail)
+      }
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
@@ -141,6 +162,21 @@ export default function Workspace({ mode, onBack }) {
         </span>
 
         <div className="ml-auto flex items-center gap-3">
+          {/* 새 보고서 버튼 */}
+          <button
+            onClick={() => {
+              if (!window.confirm('현재 작업 내용을 초기화하고 새로 시작할까요?')) return
+              localStorage.removeItem(`kw_ws_${mode}`)
+              setMessages([{ role: 'assistant', content: WELCOME[mode] }])
+              setReport('')
+              setIsMock(false)
+              setPages(1)
+            }}
+            className="text-blue-200 hover:text-white text-sm transition-colors"
+          >
+            새 보고서
+          </button>
+          <span className="text-blue-600">|</span>
           {/* 진행 표시 */}
           {loading && (
             <div className="flex items-center gap-2">
