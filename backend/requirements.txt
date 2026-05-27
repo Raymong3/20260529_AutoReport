@@ -1,0 +1,5 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-dotenv==1.0.1
+anthropic==0.104.1
+truststore==0.10.4
