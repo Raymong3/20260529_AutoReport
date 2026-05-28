@@ -11,6 +11,8 @@ from pydantic import BaseModel
 
 from services.ai_service import generate_report
 from services.hwpx_generator import generate_hwpx
+from services.table_inserter import insert_table_into_hwpx
+from services.table_models import TableData
 
 load_dotenv(find_dotenv(usecwd=True), override=True)
 
@@ -36,15 +38,19 @@ class EchoResponse(BaseModel):
 class GenerateRequest(BaseModel):
     text: str
     currentReport: str = ""
+    selectedText: str = ""   # 미리보기 드래그 선택 원문 (부분수정 시)
 
 class GenerateResponse(BaseModel):
     content: str
     mock: bool
     pages: int
+    is_report: bool = True  # True=보고서(우측패널), False=질문/대화(채팅창만)
+    tables: dict = {}       # {table_id: {caption, headers, rows}}
 
 class ExportRequest(BaseModel):
     content: str
     title: str = "보고서"
+    tables: dict = {}       # {table_id: {caption, headers, rows}}
 
 
 # ──────────────────────────────────────────────
@@ -58,7 +64,7 @@ def echo(body: EchoRequest):
 
 @app.post("/api/generate", response_model=GenerateResponse)
 def generate(body: GenerateRequest):
-    result = generate_report(body.text, body.currentReport)
+    result = generate_report(body.text, body.currentReport, body.selectedText)
     return GenerateResponse(**result)
 
 
@@ -66,6 +72,11 @@ def generate(body: GenerateRequest):
 def export_hwpx(body: ExportRequest):
     try:
         hwpx_bytes = generate_hwpx(body.content, body.title)
+        for table_id, table_raw in body.tables.items():
+            table_data = TableData(**table_raw)
+            hwpx_bytes = insert_table_into_hwpx(
+                hwpx_bytes, table_data, f"[[TABLE:{table_id}]]"
+            )
     except Exception as e:
         import traceback
         traceback.print_exc()

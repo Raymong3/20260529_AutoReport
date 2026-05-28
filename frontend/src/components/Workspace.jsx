@@ -28,6 +28,7 @@ export default function Workspace({ mode, onBack }) {
     saved?.messages ?? [{ role: 'assistant', content: WELCOME[mode] }]
   )
   const [report, setReport]       = useState(saved?.report ?? '')
+  const [tables, setTables]       = useState(saved?.tables ?? {})
   const [isMock, setIsMock]       = useState(saved?.isMock ?? false)
   const [pages, setPages]         = useState(saved?.pages ?? 1)
   const [loading, setLoading]     = useState(false)
@@ -37,8 +38,8 @@ export default function Workspace({ mode, onBack }) {
 
   // 상태 변경될 때마다 localStorage에 저장
   useEffect(() => {
-    localStorage.setItem(`kw_ws_${mode}`, JSON.stringify({ messages, report, isMock, pages }))
-  }, [messages, report, isMock, pages, mode])
+    localStorage.setItem(`kw_ws_${mode}`, JSON.stringify({ messages, report, tables, isMock, pages }))
+  }, [messages, report, tables, isMock, pages, mode])
 
   // loading 상태에 따라 타이머 시작/정지
   useEffect(() => {
@@ -63,7 +64,7 @@ export default function Workspace({ mode, onBack }) {
       const res = await fetch('/api/export/hwpx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: report, title: reportTitle }),
+        body: JSON.stringify({ content: report, title: reportTitle, tables }),
       })
       if (!res.ok) {
         const text = await res.text().catch(() => '')
@@ -83,6 +84,70 @@ export default function Workspace({ mode, onBack }) {
       alert(`다운로드에 실패했습니다.\n${err.message}`)
     }
     setDownloading(false)
+  }
+
+  async function handlePartialEdit(instruction, selectedText) {
+    const preview = selectedText.length > 40
+      ? selectedText.slice(0, 40) + '…'
+      : selectedText
+    const updated = [
+      ...messages,
+      { role: 'user', content: `[선택 텍스트 수정]\n"${preview}"\n\n${instruction}` },
+    ]
+    setMessages(updated)
+    setLoading(true)
+
+    const controller = new AbortController()
+    const clientTimeout = setTimeout(() => controller.abort(), 130_000)
+
+    try {
+      const res = await fetch(`${API_BASE}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: instruction, currentReport: report, selectedText }),
+        signal: controller.signal,
+      })
+      clearTimeout(clientTimeout)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+        throw new Error(err.detail || `서버 오류 (${res.status})`)
+      }
+      const data = await res.json()
+      if (data.is_report !== false) {
+        setReport(data.content)
+        setTables(prev => {
+          const merged = { ...prev, ...(data.tables ?? {}) }
+          for (const key of Object.keys(merged)) {
+            if (!data.content.includes(`[[TABLE:${key}]]`)) delete merged[key]
+          }
+          return merged
+        })
+        setIsMock(data.mock)
+        setPages(data.pages ?? 1)
+        const lineCount = data.content.split('\n').length
+        const maxLines  = (data.pages ?? 1) * 29
+        setMessages([
+          ...updated,
+          {
+            role: 'assistant',
+            content: `선택한 부분을 수정했습니다. (${lineCount}줄 / 최대 ${maxLines}줄)\n우측에서 확인해주세요.`,
+          },
+        ])
+      } else {
+        setMessages([...updated, { role: 'assistant', content: data.content }])
+      }
+    } catch (err) {
+      clearTimeout(clientTimeout)
+      const msg = err.name === 'AbortError'
+        ? 'AI 응답 시간 초과(130초). 다시 시도해주세요.'
+        : err.message
+      setMessages([
+        ...updated,
+        { role: 'assistant', content: `오류가 발생했습니다.\n${msg}` },
+      ])
+    }
+
+    setLoading(false)
   }
 
   async function handleSend(text) {
@@ -107,20 +172,38 @@ export default function Workspace({ mode, onBack }) {
         throw new Error(err.detail || `서버 오류 (${res.status})`)
       }
       const data = await res.json()
-      setReport(data.content)
-      setIsMock(data.mock)
-      setPages(data.pages ?? 1)
-      const lineCount = data.content.split('\n').length
-      const maxLines  = (data.pages ?? 1) * 29
-      setMessages([
-        ...updated,
-        {
-          role: 'assistant',
-          content: data.mock
-            ? '샘플 보고서를 생성했습니다. (목업 모드)\n우측에서 확인해주세요.'
-            : `보고서 초안을 작성했습니다. (${lineCount}줄 / 최대 ${maxLines}줄)\n우측에서 확인 후 수정 사항을 말씀해주세요.`,
-        },
-      ])
+      if (data.is_report !== false) {
+        // 보고서 → 우측 패널 업데이트
+        const wasEditing = report !== ''
+        setReport(data.content)
+        // 기존 table 데이터 보존: 새 content에 마커가 남아있으면 기존 데이터 유지,
+        // AI가 새 TABLE_DATA를 반환하면 덮어씀, 마커가 사라진 표는 제거
+        setTables(prev => {
+          const merged = { ...prev, ...(data.tables ?? {}) }
+          for (const key of Object.keys(merged)) {
+            if (!data.content.includes(`[[TABLE:${key}]]`)) delete merged[key]
+          }
+          return merged
+        })
+        setIsMock(data.mock)
+        setPages(data.pages ?? 1)
+        const lineCount = data.content.split('\n').length
+        const maxLines  = (data.pages ?? 1) * 29
+        setMessages([
+          ...updated,
+          {
+            role: 'assistant',
+            content: data.mock
+              ? '샘플 보고서를 생성했습니다. (목업 모드)\n우측에서 확인해주세요.'
+              : wasEditing
+              ? `보고서를 수정했습니다. (${lineCount}줄 / 최대 ${maxLines}줄)\n우측에서 확인 후 추가 수정 사항을 말씀해주세요.`
+              : `보고서 초안을 작성했습니다. (${lineCount}줄 / 최대 ${maxLines}줄)\n우측에서 확인 후 수정 사항을 말씀해주세요.`,
+          },
+        ])
+      } else {
+        // 질문/대화 → 채팅에만 표시, 보고서 패널 유지
+        setMessages([...updated, { role: 'assistant', content: data.content }])
+      }
     } catch (err) {
       clearTimeout(clientTimeout)
       const msg = err.name === 'AbortError'
@@ -160,6 +243,11 @@ export default function Workspace({ mode, onBack }) {
         <span className="text-blue-300 text-sm">
           모드 {mode} · {MODE_LABEL[mode]}
         </span>
+        <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+          report ? 'bg-amber-400 text-amber-900' : 'bg-green-400 text-green-900'
+        }`}>
+          {report ? '수정 모드' : '작성 모드'}
+        </span>
 
         <div className="ml-auto flex items-center gap-3">
           {/* 새 보고서 버튼 */}
@@ -169,6 +257,7 @@ export default function Workspace({ mode, onBack }) {
               localStorage.removeItem(`kw_ws_${mode}`)
               setMessages([{ role: 'assistant', content: WELCOME[mode] }])
               setReport('')
+              setTables({})
               setIsMock(false)
               setPages(1)
             }}
@@ -210,7 +299,16 @@ export default function Workspace({ mode, onBack }) {
 
       <div className="flex-1 flex overflow-hidden">
         <ChatPanel messages={messages} onSend={handleSend} loading={loading} />
-        <PreviewPanel content={report} pages={pages} />
+        <PreviewPanel
+          content={report}
+          pages={pages}
+          tables={tables}
+          onPartialEdit={report && !loading ? handlePartialEdit : undefined}
+          onDirectEdit={report && !loading ? (text, newTables) => {
+            setReport(text)
+            if (newTables !== undefined) setTables(newTables)
+          } : undefined}
+        />
       </div>
     </div>
   )
