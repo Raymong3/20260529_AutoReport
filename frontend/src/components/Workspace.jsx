@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import ChatPanel from './ChatPanel'
 import PreviewPanel from './PreviewPanel'
 
-// Vite 프록시 우회 — /api/generate 는 백엔드에 직접 연결
-const API_BASE = 'http://127.0.0.1:8000'
+// API 베이스 경로 설정 (통합 배포 시 공백, 필요시 백엔드 주소 기입)
+const API_BASE = ''
 
 const MODE_LABEL = { A: '정기 반복', B: '양식 기반', C: '자유 작성' }
 
