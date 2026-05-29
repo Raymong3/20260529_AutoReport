@@ -13,6 +13,24 @@ const WELCOME = {
   C: '보고서의 목적과 핵심 내용을 자유롭게 입력해주세요.',
 }
 
+// 사용자 입력에서 "키 : 값" 패턴의 값을 추출 (하이라이트 제외용)
+function extractUserValues(text) {
+  const values = []
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    const colonIdx = trimmed.indexOf(':')
+    if (colonIdx > 0 && colonIdx < trimmed.length - 2) {
+      const before = trimmed.slice(0, colonIdx).trim()
+      const after  = trimmed.slice(colonIdx + 1).trim()
+      // "14:00" 같은 시간 표현(앞이 숫자 1-2자리)은 제외, 값이 3자 이상인 것만 수집
+      if (after.length >= 3 && !/^\d{1,2}$/.test(before)) {
+        values.push(after)
+      }
+    }
+  }
+  return values
+}
+
 function loadState(mode) {
   try {
     const saved = localStorage.getItem(`kw_ws_${mode}`)
@@ -29,6 +47,8 @@ export default function Workspace({ mode, onBack }) {
   )
   const [report, setReport]       = useState(saved?.report ?? '')
   const [tables, setTables]       = useState(saved?.tables ?? {})
+  const [estimated, setEstimated]       = useState(saved?.estimated ?? [])
+  const [userProvided, setUserProvided] = useState(saved?.userProvided ?? [])
   const [isMock, setIsMock]       = useState(saved?.isMock ?? false)
   const [pages, setPages]         = useState(saved?.pages ?? 1)
   const [loading, setLoading]     = useState(false)
@@ -38,7 +58,7 @@ export default function Workspace({ mode, onBack }) {
 
   // 상태 변경될 때마다 localStorage에 저장
   useEffect(() => {
-    localStorage.setItem(`kw_ws_${mode}`, JSON.stringify({ messages, report, tables, isMock, pages }))
+    localStorage.setItem(`kw_ws_${mode}`, JSON.stringify({ messages, report, tables, estimated, userProvided, isMock, pages }))
   }, [messages, report, tables, isMock, pages, mode])
 
   // loading 상태에 따라 타이머 시작/정지
@@ -115,6 +135,11 @@ export default function Workspace({ mode, onBack }) {
       const data = await res.json()
       if (data.is_report !== false) {
         setReport(data.content)
+        setEstimated(data.estimated ?? [])
+        setUserProvided(prev => {
+          const backendValues = data.user_provided ?? []
+          return backendValues.length > 0 ? [...new Set([...prev, ...backendValues])] : prev
+        })
         setTables(prev => {
           const merged = { ...prev, ...(data.tables ?? {}) }
           for (const key of Object.keys(merged)) {
@@ -176,6 +201,10 @@ export default function Workspace({ mode, onBack }) {
         // 보고서 → 우측 패널 업데이트
         const wasEditing = report !== ''
         setReport(data.content)
+        setEstimated(data.estimated ?? [])
+        const frontendValues = extractUserValues(text)
+        const backendValues  = data.user_provided ?? []
+        setUserProvided([...new Set([...frontendValues, ...backendValues])])
         // 기존 table 데이터 보존: 새 content에 마커가 남아있으면 기존 데이터 유지,
         // AI가 새 TABLE_DATA를 반환하면 덮어씀, 마커가 사라진 표는 제거
         setTables(prev => {
@@ -258,10 +287,12 @@ export default function Workspace({ mode, onBack }) {
               setMessages([{ role: 'assistant', content: WELCOME[mode] }])
               setReport('')
               setTables({})
+              setEstimated([])
+              setUserProvided([])
               setIsMock(false)
               setPages(1)
             }}
-            className="text-blue-200 hover:text-white text-sm transition-colors"
+            className="text-blue-100 hover:text-white text-sm font-medium px-3 py-1.5 rounded border border-blue-500 hover:border-blue-300 transition-colors"
           >
             새 보고서
           </button>
@@ -290,9 +321,9 @@ export default function Workspace({ mode, onBack }) {
           <button
             onClick={handleDownload}
             disabled={!report || downloading || loading}
-            className="bg-white text-blue-800 text-sm px-4 py-1.5 rounded hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="bg-amber-400 text-slate-900 text-sm font-bold px-5 py-2 rounded-lg shadow-sm hover:bg-amber-300 active:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           >
-            {downloading ? '생성 중...' : 'HWPX 다운로드'}
+            {downloading ? '⏳ 생성 중...' : '⬇ HWPX 다운로드'}
           </button>
         </div>
       </header>
@@ -303,6 +334,8 @@ export default function Workspace({ mode, onBack }) {
           content={report}
           pages={pages}
           tables={tables}
+          estimated={estimated}
+          userProvided={userProvided}
           onPartialEdit={report && !loading ? handlePartialEdit : undefined}
           onDirectEdit={report && !loading ? (text, newTables) => {
             setReport(text)

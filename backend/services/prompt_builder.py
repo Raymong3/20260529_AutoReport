@@ -8,6 +8,7 @@ style_guide/ 폴더의 파일들을 읽어 Claude API에 전달할 시스템 프
   build_system_prompt_create(pages)       → 새 보고서 작성용
   build_system_prompt_edit(report, pages) → 기존 보고서 수정용
 """
+import datetime
 import json
 import os
 from pathlib import Path
@@ -55,6 +56,13 @@ def _format_learned_rules(rules: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _today_str() -> str:
+    """오늘 날짜를 보고서 형식 문자열로 반환. 예: '26. 05. 28."""
+    today = datetime.date.today()
+    yy = str(today.year)[2:]
+    return f"'{yy}. {today.month:02d}. {today.day:02d}."
+
+
 def _build_base_parts() -> list[str]:
     """공통 부분 (스타일 가이드 + 학습 규칙)."""
     base_rules   = _read_text(BASE_RULES_PATH)
@@ -69,6 +77,9 @@ def _build_base_parts() -> list[str]:
         "[보고서 작성 규칙]",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         base_rules,
+        "",
+        f"[오늘 날짜] {_today_str()}",
+        "주관자 블록의 날짜란은 반드시 위 오늘 날짜를 그대로 사용하세요. ('YY. MM. DD. 형식)",
     ]
 
     if format_rules:
@@ -117,7 +128,30 @@ def build_system_prompt_create(pages: int = 1) -> str:
         "- [보고서] 마커 없이 응답 시작 금지",
         "- 요약 불릿은 반드시 ◈ 기호만 사용 (◆, ◇ 등 다른 기호 사용 금지)",
         "",
-        "정보 부족 시: '[정보 필요: 내용]' 플레이스홀더를 넣고 보고서를 완성하세요.",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "[AI 임의 작성 표기 — 보고서 맨 끝에 반드시 포함, 생략 절대 금지]",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "보고서 본문은 마커 없이 깔끔하게 작성하세요.",
+        "보고서 내용을 모두 작성한 직후, 아래 두 블록을 추가하세요.",
+        "",
+        "【블록 ①】 ESTIMATED — 항상 [\"__ALL__\"] 반환 (생략 절대 금지):",
+        "===ESTIMATED_START===",
+        '["__ALL__"]',
+        "===ESTIMATED_END===",
+        "",
+        "【블록 ②】 USER_PROVIDED — 사용자가 명시적으로 제공한 값이 있는 경우에만 추가:",
+        "  사용자가 직접 제공한 날짜·인원·장소·이름·금액·주제 등이 보고서 본문에 그대로 등장하면,",
+        "  그 표현을 본문에서 그대로 복사하여 나열하세요 (요약·변형 금지).",
+        "===USER_PROVIDED_START===",
+        '["본문에 등장하는 사용자 제공 표현1", "표현2"]',
+        "===USER_PROVIDED_END===",
+        "  USER_PROVIDED 블록은 사용자 제공 정보가 없으면 생략 가능.",
+        "",
+        "예시: 사용자가 '교육일시: 26.5.29 14:00~16:00, 교육대상: 전 직원(29명)'을 제공한 경우",
+        "  → USER_PROVIDED에 본문에 등장하는 ['26.5.29 14:00~16:00', '전 직원(29명)'] 등을 나열",
+        "  → 그 외 AI가 작성한 관련근거·교육방법·행정사항 등은 ESTIMATED의 __ALL__로 하이라이트됨",
+        "",
+        "정보가 완전히 없어 작성이 불가한 경우: '[정보 필요: 내용]' 플레이스홀더 사용.",
         "",
         "[표 삽입 규칙] (표가 필요한 경우에만 적용)",
         "사용자가 표를 요청하거나 항목 비교·일정 등 표가 명확히 필요한 경우:",
@@ -199,6 +233,26 @@ def build_system_prompt_edit(current_report: str, pages: int = 1, selected_text:
         "     ===TABLE_DATA_END===",
         "  4. 열 수는 반드시 3, 4, 5 중 하나로만 구성",
         "  5. 표가 필요 없으면 마커도 블록도 출력 금지",
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "[AI 임의 작성 표기 — 보고서 맨 끝에 반드시 포함, 생략 절대 금지]",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "보고서 본문은 마커 없이 깔끔하게 작성하세요.",
+        "보고서 내용을 모두 작성한 직후, 아래 두 블록을 추가하세요.",
+        "",
+        "【블록 ①】 ESTIMATED — 항상 [\"__ALL__\"] 반환 (생략 절대 금지):",
+        "===ESTIMATED_START===",
+        '["__ALL__"]',
+        "===ESTIMATED_END===",
+        "",
+        "【블록 ②】 USER_PROVIDED — 사용자가 이번 요청에서 명시적으로 제공한 값이 있는 경우에만 추가:",
+        "  본문에 그대로 등장하는 사용자 제공 표현을 복사하여 나열 (요약·변형 금지).",
+        "===USER_PROVIDED_START===",
+        '["본문에 등장하는 사용자 제공 표현1", "표현2"]',
+        "===USER_PROVIDED_END===",
+        "",
+        "▶ 반드시 지킬 것:",
+        "  - ESTIMATED 블록은 생략 불가. 항상 [\"__ALL__\"] 반환",
         "",
         f"[분량 기준] 최대 {max_lines}줄 이내 유지",
     ]

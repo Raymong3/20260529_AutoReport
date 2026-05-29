@@ -46,6 +46,8 @@ class GenerateResponse(BaseModel):
     pages: int
     is_report: bool = True  # True=보고서(우측패널), False=질문/대화(채팅창만)
     tables: dict = {}       # {table_id: {caption, headers, rows}}
+    estimated: list = []    # AI 임의 작성 표시용 (미리보기 하이라이팅)
+    user_provided: list = [] # 사용자가 직접 제공한 표현 목록 (하이라이트 제외용)
 
 class ExportRequest(BaseModel):
     content: str
@@ -72,6 +74,12 @@ def generate(body: GenerateRequest):
 def export_hwpx(body: ExportRequest):
     try:
         hwpx_bytes = generate_hwpx(body.content, body.title)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"HWPX 생성 오류: {type(e).__name__}: {e}")
+
+    try:
         for table_id, table_raw in body.tables.items():
             table_data = TableData(**table_raw)
             hwpx_bytes = insert_table_into_hwpx(
@@ -80,7 +88,7 @@ def export_hwpx(body: ExportRequest):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"HWPX 생성 오류: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"표 삽입 오류: {type(e).__name__}: {e}")
     safe_title = re.sub(r'[\\/:*?"<>|]', '_', body.title)
     encoded_name = quote(safe_title, safe='', encoding='utf-8')
     return Response(

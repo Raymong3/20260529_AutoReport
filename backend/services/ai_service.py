@@ -17,8 +17,12 @@ from fastapi import HTTPException
 
 from services.prompt_builder import build_system_prompt_create, build_system_prompt_edit
 
-_TABLE_START = "===TABLE_DATA_START==="
-_TABLE_END   = "===TABLE_DATA_END==="
+_TABLE_START          = "===TABLE_DATA_START==="
+_TABLE_END            = "===TABLE_DATA_END==="
+_ESTIMATED_START      = "===ESTIMATED_START==="
+_ESTIMATED_END        = "===ESTIMATED_END==="
+_USER_PROVIDED_START  = "===USER_PROVIDED_START==="
+_USER_PROVIDED_END    = "===USER_PROVIDED_END==="
 
 
 def _parse_tables(text: str) -> tuple[str, dict]:
@@ -26,14 +30,16 @@ def _parse_tables(text: str) -> tuple[str, dict]:
 
     Returns:
         (content_without_block, tables_dict)
-        블록이 없거나 파싱 실패 시 (원본 text, {}) 반환.
+        블록이 없으면 (원본 text, {}) 반환.
+        블록이 있으면 파싱 성공 여부와 무관하게 블록을 제거한 텍스트를 반환.
     """
     start = text.find(_TABLE_START)
     if start == -1:
         return text, {}
     end = text.find(_TABLE_END, start)
     if end == -1:
-        return text, {}
+        # 종료 마커가 없으면 시작 마커 이후를 모두 제거
+        return text[:start].strip(), {}
 
     json_text = text[start + len(_TABLE_START):end].strip()
     clean_content = (text[:start].rstrip() + "\n" + text[end + len(_TABLE_END):]).strip()
@@ -42,7 +48,57 @@ def _parse_tables(text: str) -> tuple[str, dict]:
         tables = json.loads(json_text)
         return clean_content, tables
     except json.JSONDecodeError:
-        return text, {}
+        return clean_content, {}
+
+
+def _parse_estimated(text: str) -> tuple[str, list]:
+    """AI 응답에서 ESTIMATED 블록을 추출한다.
+
+    Returns:
+        (content_without_block, estimated_phrases_list)
+    """
+    start = text.find(_ESTIMATED_START)
+    if start == -1:
+        return text, []
+    end = text.find(_ESTIMATED_END, start)
+    if end == -1:
+        return text[:start].strip(), []
+
+    json_text = text[start + len(_ESTIMATED_START):end].strip()
+    clean_content = (text[:start].rstrip() + "\n" + text[end + len(_ESTIMATED_END):]).strip()
+
+    try:
+        phrases = json.loads(json_text)
+        if isinstance(phrases, list):
+            return clean_content, [str(p) for p in phrases if p]
+        return clean_content, []
+    except json.JSONDecodeError:
+        return clean_content, []
+
+
+def _parse_user_provided(text: str) -> tuple[str, list]:
+    """AI 응답에서 USER_PROVIDED 블록을 추출한다.
+
+    Returns:
+        (content_without_block, user_provided_phrases_list)
+    """
+    start = text.find(_USER_PROVIDED_START)
+    if start == -1:
+        return text, []
+    end = text.find(_USER_PROVIDED_END, start)
+    if end == -1:
+        return text[:start].strip(), []
+
+    json_text = text[start + len(_USER_PROVIDED_START):end].strip()
+    clean_content = (text[:start].rstrip() + "\n" + text[end + len(_USER_PROVIDED_END):]).strip()
+
+    try:
+        phrases = json.loads(json_text)
+        if isinstance(phrases, list):
+            return clean_content, [str(p) for p in phrases if p]
+        return clean_content, []
+    except json.JSONDecodeError:
+        return clean_content, []
 
 
 MOCK_RESPONSE = """'26년 단양수도지사 수도사업장 예초 용역 시행계획 (샘플)
@@ -125,15 +181,21 @@ def generate_report(text: str, current_report: str = "", selected_text: str = ""
     if raw.startswith('[보고서]'):
         body = raw[len('[보고서]'):].lstrip('\n').lstrip()
         content, tables = _parse_tables(body)
+        content, estimated = _parse_estimated(content)
+        content, user_provided = _parse_user_provided(content)
         is_report = True
     elif raw.startswith('[질문]'):
         content = raw[len('[질문]'):].strip()
         tables = {}
+        estimated = []
+        user_provided = []
         is_report = False
     else:
         # 마커 없는 예외 응답 → 채팅창에만 표시 (보고서 패널 보호)
         content = raw
         tables = {}
+        estimated = []
+        user_provided = []
         is_report = False
 
     return {
@@ -142,4 +204,6 @@ def generate_report(text: str, current_report: str = "", selected_text: str = ""
         "pages": pages,
         "is_report": is_report,
         "tables": tables,
+        "estimated": estimated,
+        "user_provided": user_provided,
     }

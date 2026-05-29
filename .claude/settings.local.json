@@ -4,7 +4,11 @@
       "PowerShell(netstat -ano)",
       "Bash(venv\\\\Scripts\\\\python.exe -c \"from services.hwpx_generator import generate_hwpx; print\\('import OK'\\)\")",
       "PowerShell(Start-Sleep -Seconds 4; $body = '{\"text\":\"ping\"}'; try { $r = Invoke-WebRequest -Uri \"http://127.0.0.1:8000/api/echo\" -Method POST -ContentType \"application/json\" -Body $body -TimeoutSec 8; Write-Host \"백엔드 정상: $\\($r.StatusCode\\)\" } catch { Write-Host \"아직 시작 중 또는 오류: $\\($_.Exception.Message\\)\" })",
-      "Bash(dir \"C:\\\\Users\\\\20161332\\\\Desktop\\\\claude\\\\backend\\\\templates\" /s /b)"
+      "Bash(dir \"C:\\\\Users\\\\20161332\\\\Desktop\\\\claude\\\\backend\\\\templates\" /s /b)",
+      "Read(//mnt/c/Users/20161332/Desktop/claude/backend/templates/**)",
+      "Bash(venvScriptspython -c ' *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\20161332\\\\Desktop\\\\claude\" -Recurse -Directory -Filter \"frontend\")",
+      "Bash(Select-Object -First 1)"
     ]
   }
 }

@@ -8,8 +8,19 @@
 
 ID 재매핑 (표 템플릿 → base 문서):
   borderFillIDRef : 4→6(외곽), 5→7(헤더셀), 6→8(헤더마지막), 7→9(데이터셀), 8→10(데이터마지막)
-  charPrIDRef     : 9→14(데이터 12pt), 10→15(헤더 13pt)
+  charPrIDRef     : 9→16(데이터 한컴돋움 13pt), 10→17(헤더 한컴돋움 13pt)
   paraPrIDRef     : 20→21(셀 내 CENTER 150%)
+
+charPr 번호 체계 (hwpx_generator._patch_header 이후 기준):
+  0~8  : head_01.hwpx 템플릿 원본
+  9~15 : hwpx_generator._patch_header 추가 (9~13=본문용, 14~15=-20%강제1줄용)
+  16~17: 이 모듈 _patch_header_for_table 추가 (표 셀용 한컴돋움 13pt)
+
+paraPr 번호 체계:
+  0~20 : head_01.hwpx 원본 (0=JUSTIFY160%, 19=CENTER제목박스)
+  20   : hwpx_generator 빈 줄용 FIXED 5pt
+  21   : 이 모듈 표 셀 CENTER 150%
+  22   : 이 모듈 표 캡션 CENTER 160%
 """
 import html
 import io
@@ -23,7 +34,7 @@ _TABLE_DIR = os.path.join(os.path.dirname(__file__), "..", "templates", "table")
 
 # ── ID 재매핑 테이블 ─────────────────────────────────────────────
 _BF_REMAP = {"4": "6", "5": "7", "6": "8", "7": "9", "8": "10"}
-_CP_REMAP = {"8": "14", "9": "14", "10": "15", "11": "15"}  # 마지막 열 셀은 cp=8(데이터), cp=11(헤더)
+_CP_REMAP = {"8": "16", "9": "16", "10": "17", "11": "17"}  # 마지막 열 셀은 cp=8(데이터), cp=11(헤더)
 _PP_REMAP = {"19": "21", "20": "21"}  # 헤더셀=19, 데이터셀=20 → 모두 21(CENTER 150%)
 
 
@@ -97,12 +108,12 @@ _TABLE_BF_XML = (
     '</hh:borderFill>'
 )
 
-# fontRef=3 = 휴먼명조 (head_01 패치 기준)
+# fontRef=4 = 한컴돋움 (head_01 패치 기준) — base_rules: 표 폰트 중고딕(고딕계열) 13pt
 _TABLE_CHARPR_XML = (
-    # cp=14: 휴먼명조 12pt, 자간 0% — 데이터 셀
-    '<hh:charPr id="14" height="1200" textColor="#000000" shadeColor="none" '
+    # cp=16: 한컴돋움 13pt, 자간 0% — 데이터 셀
+    '<hh:charPr id="16" height="1300" textColor="#000000" shadeColor="none" '
     'useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="2">'
-    '<hh:fontRef hangul="3" latin="3" hanja="3" japanese="3" other="3" symbol="3" user="3"/>'
+    '<hh:fontRef hangul="4" latin="4" hanja="4" japanese="4" other="4" symbol="4" user="4"/>'
     '<hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>'
     '<hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>'
     '<hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>'
@@ -112,10 +123,10 @@ _TABLE_CHARPR_XML = (
     '<hh:outline type="NONE"/>'
     '<hh:shadow type="NONE" color="#B2B2B2" offsetX="10" offsetY="10"/>'
     '</hh:charPr>'
-    # cp=15: 휴먼명조 13pt, 자간 0% — 헤더 셀
-    '<hh:charPr id="15" height="1300" textColor="#000000" shadeColor="none" '
+    # cp=17: 한컴돋움 13pt, 자간 0% — 헤더 셀
+    '<hh:charPr id="17" height="1300" textColor="#000000" shadeColor="none" '
     'useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="2">'
-    '<hh:fontRef hangul="3" latin="3" hanja="3" japanese="3" other="3" symbol="3" user="3"/>'
+    '<hh:fontRef hangul="4" latin="4" hanja="4" japanese="4" other="4" symbol="4" user="4"/>'
     '<hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>'
     '<hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>'
     '<hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>'
@@ -128,6 +139,7 @@ _TABLE_CHARPR_XML = (
 )
 
 # pp=21: CENTER + PERCENT 150% — 표 셀 단락 스타일
+# pp=22: CENTER + PERCENT 160% — 표 캡션 단락 스타일 (base_rules: 캡션 가운데 정렬)
 _TABLE_PARAPR_XML = (
     '<hh:paraPr id="21" tabPrIDRef="0" condense="0" fontLineHeight="0" '
     'snapToGrid="1" suppressLineNumbers="0" checked="0">'
@@ -163,6 +175,42 @@ _TABLE_PARAPR_XML = (
     '</hh:paraPr>'
 )
 
+# pp=22: CENTER + PERCENT 160% — 표 캡션 단락 스타일 (base_rules: 가운데 정렬)
+_TABLE_CAPTION_PARAPR_XML = (
+    '<hh:paraPr id="22" tabPrIDRef="0" condense="0" fontLineHeight="0" '
+    'snapToGrid="1" suppressLineNumbers="0" checked="0">'
+    '<hh:align horizontal="CENTER" vertical="BASELINE"/>'
+    '<hh:heading type="NONE" idRef="0" level="0"/>'
+    '<hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="KEEP_WORD" '
+    'widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/>'
+    '<hh:autoSpacing eAsianEng="0" eAsianNum="0"/>'
+    '<hp:switch>'
+    '<hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar">'
+    '<hh:margin>'
+    '<hc:intent value="0" unit="HWPUNIT"/>'
+    '<hc:left value="0" unit="HWPUNIT"/>'
+    '<hc:right value="0" unit="HWPUNIT"/>'
+    '<hc:prev value="0" unit="HWPUNIT"/>'
+    '<hc:next value="0" unit="HWPUNIT"/>'
+    '</hh:margin>'
+    '<hh:lineSpacing type="PERCENT" value="160" unit="HWPUNIT"/>'
+    '</hp:case>'
+    '<hp:default>'
+    '<hh:margin>'
+    '<hc:intent value="0" unit="HWPUNIT"/>'
+    '<hc:left value="0" unit="HWPUNIT"/>'
+    '<hc:right value="0" unit="HWPUNIT"/>'
+    '<hc:prev value="0" unit="HWPUNIT"/>'
+    '<hc:next value="0" unit="HWPUNIT"/>'
+    '</hh:margin>'
+    '<hh:lineSpacing type="PERCENT" value="160" unit="HWPUNIT"/>'
+    '</hp:default>'
+    '</hp:switch>'
+    '<hh:border borderFillIDRef="2" offsetLeft="0" offsetRight="0" '
+    'offsetTop="0" offsetBottom="0" connect="0" ignoreMargin="0"/>'
+    '</hh:paraPr>'
+)
+
 
 # ── header.xml 패치 ──────────────────────────────────────────────
 
@@ -182,26 +230,108 @@ def _patch_header_for_table(header_xml: str) -> str:
         '</hh:borderFills>', _TABLE_BF_XML + '</hh:borderFills>'
     )
 
-    # charProperties: 14 → 16
+    # charProperties: 16 → 18 (hwpx_generator._patch_header 이후 16개 → 2개 추가 = 18개)
     header_xml = re.sub(
-        r'(<hh:charProperties itemCnt=)"14"', r'\1"16"', header_xml
+        r'(<hh:charProperties itemCnt=)"16"', r'\1"18"', header_xml
     )
     header_xml = header_xml.replace(
         '</hh:charProperties>', _TABLE_CHARPR_XML + '</hh:charProperties>'
     )
 
-    # paraProperties: 21 → 22
+    # paraProperties: 21 → 23 (표 셀 paraPr id=21 + 캡션 paraPr id=22 추가)
     header_xml = re.sub(
-        r'(<hh:paraProperties itemCnt=)"21"', r'\1"22"', header_xml
+        r'(<hh:paraProperties itemCnt=)"21"', r'\1"23"', header_xml
     )
     header_xml = header_xml.replace(
-        '</hh:paraProperties>', _TABLE_PARAPR_XML + '</hh:paraProperties>'
+        '</hh:paraProperties>',
+        _TABLE_PARAPR_XML + _TABLE_CAPTION_PARAPR_XML + '</hh:paraProperties>'
     )
 
     return header_xml
 
 
 # ── 표 XML 조립 ──────────────────────────────────────────────────
+
+def _build_table_xml_from_scratch(table_data: TableData) -> str:
+    """템플릿 파일 없이 직접 표 XML을 생성한다.
+
+    실제 head_01.hwpx에서 추출한 구조를 기반으로 하며,
+    ID 재매핑 후 최종 ID를 직접 사용하므로 _remap_attr 불필요.
+
+    borderFill: 6=외곽, 7=헤더셀(회색), 8=헤더마지막, 9=데이터셀, 10=데이터마지막
+    charPr: 16=중고딕13pt데이터, 17=중고딕13pt헤더
+    paraPr: 21=CENTER 150%
+    """
+    n_col = table_data.column_count
+    n_row_data = len(table_data.rows)
+    n_row_total = 1 + n_row_data
+
+    # 열 너비 (A4 본문 폭 기준 ≈ 168mm)
+    total_w = 47618
+    col_w_base = total_w // n_col
+    col_widths = [col_w_base] * (n_col - 1) + [total_w - col_w_base * (n_col - 1)]
+
+    header_h = 2400   # 헤더 행 높이 (≈ 8.5mm)
+    data_h   = 2000   # 데이터 행 높이 (≈ 7mm)
+    total_h  = header_h + data_h * n_row_data
+
+    def _cell(ci: int, ri: int, text: str, is_header: bool, w: int, h: int) -> str:
+        is_last = ci == n_col - 1
+        if is_header:
+            bf = "8" if is_last else "7"
+            cp, pp = "17", "21"  # 중고딕 13pt 헤더
+        else:
+            bf = "10" if is_last else "9"
+            cp, pp = "16", "21"  # 중고딕 13pt 데이터
+        pid = 2_147_483_648 + ri * 1000 + ci
+        return (
+            f'<hp:tc name="" header="{1 if is_header else 0}" hasMargin="0" '
+            f'protect="0" editable="0" dirty="0" borderFillIDRef="{bf}">'
+            f'<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" '
+            f'linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" '
+            f'hasTextRef="0" hasNumRef="0">'
+            f'<hp:p id="{pid}" paraPrIDRef="{pp}" styleIDRef="0" '
+            f'pageBreak="0" columnBreak="0" merged="0">'
+            f'<hp:run charPrIDRef="{cp}"><hp:t>{html.escape(text, quote=False)}</hp:t></hp:run>'
+            f'</hp:p>'
+            f'</hp:subList>'
+            f'<hp:cellAddr colAddr="{ci}" rowAddr="{ri}"/>'
+            f'<hp:cellSpan colSpan="1" rowSpan="1"/>'
+            f'<hp:cellSz width="{w}" height="{h}"/>'
+            f'<hp:cellMargin left="141" right="141" top="141" bottom="141"/>'
+            f'</hp:tc>'
+        )
+
+    tbl = (
+        f'<hp:tbl id="9001" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" '
+        f'textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL" '
+        f'repeatHeader="1" rowCnt="{n_row_total}" colCnt="{n_col}" '
+        f'cellSpacing="0" borderFillIDRef="6" noAdjust="0">'
+        f'<hp:sz width="{total_w}" widthRelTo="ABSOLUTE" height="{total_h}" '
+        f'heightRelTo="ABSOLUTE" protect="0"/>'
+        f'<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" '
+        f'holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" '
+        f'vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
+        f'<hp:outMargin left="283" right="283" top="283" bottom="283"/>'
+        f'<hp:inMargin left="283" right="283" top="0" bottom="0"/>'
+    )
+
+    # 헤더 행
+    tbl += '<hp:tr>' + ''.join(
+        _cell(ci, 0, hdr, True, w, header_h)
+        for ci, (hdr, w) in enumerate(zip(table_data.headers, col_widths))
+    ) + '</hp:tr>'
+
+    # 데이터 행
+    for ri, row in enumerate(table_data.rows):
+        tbl += '<hp:tr>' + ''.join(
+            _cell(ci, ri + 1, cell, False, w, data_h)
+            for ci, (cell, w) in enumerate(zip(row, col_widths))
+        ) + '</hp:tr>'
+
+    tbl += '</hp:tbl>'
+    return tbl
+
 
 def _extract_cells(tr_content: str) -> list[str]:
     """<hp:tr> 내용에서 각 <hp:tc>...</hp:tc> 목록을 반환."""
@@ -278,10 +408,12 @@ def _build_table_xml(tpl_section_xml: str, table_data: TableData) -> str:
 # ── 단락 XML 생성 헬퍼 ───────────────────────────────────────────
 
 def _caption_para(caption: str, para_id: int) -> str:
-    """캡션 단락: 표 바로 위에 '【 ... 】' 형식으로 삽입."""
+    """캡션 단락: 표 바로 위에 '【 ... 】' 형식으로 가운데 정렬 삽입.
+    paraPrIDRef=22 → CENTER 160% (base_rules: 표 캡션 가운데 정렬)
+    """
     text = f'【 {caption} 】'
     return (
-        f'<hp:p id="{para_id}" paraPrIDRef="0" styleIDRef="0" '
+        f'<hp:p id="{para_id}" paraPrIDRef="22" styleIDRef="0" '
         f'pageBreak="0" columnBreak="0" merged="0">'
         f'<hp:run charPrIDRef="10"><hp:t>'
         f'{html.escape(text, quote=False)}</hp:t></hp:run>'
@@ -355,13 +487,13 @@ def insert_table_into_hwpx(
         raise ValueError(err)
 
     tpl_path = os.path.join(_TABLE_DIR, table_data.template_filename)  # type: ignore[arg-type]
-    if not os.path.exists(tpl_path):
-        raise FileNotFoundError(f"표 양식 파일 없음: {tpl_path}")
-
-    with zipfile.ZipFile(tpl_path, 'r') as z:
-        tpl_section_xml = z.read("Contents/section0.xml").decode("utf-8", errors="replace")
-
-    table_xml = _build_table_xml(tpl_section_xml, table_data)
+    if os.path.exists(tpl_path):
+        with zipfile.ZipFile(tpl_path, 'r') as z:
+            tpl_section_xml = z.read("Contents/section0.xml").decode("utf-8", errors="replace")
+        table_xml = _build_table_xml(tpl_section_xml, table_data)
+    else:
+        # 템플릿 파일 없음 → 코드에서 직접 표 XML 생성
+        table_xml = _build_table_xml_from_scratch(table_data)
 
     # 캡션 + 표 단락 XML (para id는 마커 위치 기반으로 충분히 큰 값 사용)
     replacement_xml = (

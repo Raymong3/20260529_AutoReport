@@ -1,5 +1,5 @@
 """
-HWPX 생성 모듈 (v7 - 요약박스 폰트 재매핑 + 단락 간격 조정)
+HWPX 생성 모듈 (v9 - 중고딕→한컴돋움 폰트 치환)
 
 구조:
   templates/box/head_01.hwpx    → 제목 박스 ({{report_title}})
@@ -8,13 +8,23 @@ HWPX 생성 모듈 (v7 - 요약박스 폰트 재매핑 + 단락 간격 조정)
 폰트 매핑 (charPrIDRef, head 템플릿 기준):
   8  → HY헤드라인M 20pt  (제목 박스, 템플릿 고정)
   9  → HY헤드라인M 15pt  (1./2./3. 섹션 제목)
-  10 → 휴먼명조 15pt     (□/◦/- 본문 + 요약박스 텍스트)
-  11 → 중고딕 13pt        (* 참고/각주)
+  10 → 휴먼명조 15pt, 자간 -10% (□/◦/- 본문, 긴 단락)
+  11 → 한컴돋움 13pt, 자간 -10%  (* 참고/각주, 긴 단락)
+  12 → 휴먼명조 15pt, 자간  0%  (□/◦/- 본문, 짧은 단락)
+  13 → 한컴돋움 13pt, 자간  0%  (* 참고/각주, 짧은 단락)
+  14 → 휴먼명조 15pt, 자간 -20% (본문 강제 1줄용)
+  15 → 한컴돋움 13pt, 자간 -20% (주관자 블록 강제 1줄용)
 
 단락 스타일 매핑 (paraPrIDRef):
   0  → JUSTIFY 160% (본문 단락)
   19 → CENTER  160% (제목 박스 셀 — 템플릿 고정, 재사용 금지)
   20 → JUSTIFY FIXED 5pt (빈 줄 전용, 패치로 추가)
+
+표 관련 ID (table_inserter._patch_header_for_table 추가):
+  charPr 16 → 한컴돋움 13pt, 자간 0% (표 데이터 셀)
+  charPr 17 → 한컴돋움 13pt, 자간 0% (표 헤더 셀)
+  paraPr 21 → CENTER 150% (표 셀 단락)
+  paraPr 22 → CENTER 160% (표 캡션 단락)
 """
 import html
 import io
@@ -34,7 +44,7 @@ _NEW_FONTS = (
     '<hh:typeInfo familyType="FCAT_ROMAN" weight="5" proportion="4" contrast="5" '
     'strokeVariation="1" armStyle="1" letterform="1" midline="1" xHeight="1"/>'
     '</hh:font>'
-    '<hh:font id="4" face="중고딕" type="TTF" isEmbedded="0">'
+    '<hh:font id="4" face="한컴돋움" type="TTF" isEmbedded="0">'
     '<hh:typeInfo familyType="FCAT_GOTHIC" weight="5" proportion="4" contrast="0" '
     'strokeVariation="1" armStyle="1" letterform="1" midline="1" xHeight="1"/>'
     '</hh:font>'
@@ -66,6 +76,8 @@ _NEW_CHARPR = (
     + _charpr_xml(11, 1300, 4, -10)  # 중고딕 13pt      – 참고/각주 (자간 -10%, 긴 단락)
     + _charpr_xml(12, 1500, 3, 0)    # 휴먼명조 15pt    – 본문 (자간 0%, 짧은 단락)
     + _charpr_xml(13, 1300, 4, 0)    # 중고딕 13pt      – 참고/각주 (자간 0%, 짧은 단락)
+    + _charpr_xml(14, 1500, 3, -20)  # 휴먼명조 15pt    – 본문 (자간 -20%, 강제 1줄)
+    + _charpr_xml(15, 1300, 4, -20)  # 중고딕 13pt      – 참고/각주 (자간 -20%, 주관자 블록 강제 1줄)
 )
 
 # 빈 줄용 paraPr: FIXED 500 HWPUNIT = 5pt 고정 줄높이
@@ -113,10 +125,10 @@ def _patch_header(header_xml: str) -> str:
     )
     header_xml = header_xml.replace('</hh:fontface>', _NEW_FONTS + '</hh:fontface>')
 
-    # 2. charProperties itemCnt 9→14, 새 charPr 5개 추가
+    # 2. charProperties itemCnt 9→16, 새 charPr 7개 추가 (id=9~15)
     header_xml = re.sub(
         r'(<hh:charProperties itemCnt=)"9"',
-        r'\1"14"',
+        r'\1"16"',
         header_xml,
     )
     header_xml = header_xml.replace('</hh:charProperties>', _NEW_CHARPR + '</hh:charProperties>')
@@ -155,11 +167,14 @@ def _strip_bold(text: str) -> str:
     return re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
 
 
-# 자간 0% / -10% 각각의 1줄 수용 한글 환산 글자 수 (A4 170mm 기준)
-_BODY_LINE_0     = 33  # 휴먼명조 15pt, 자간 0%
+# 자간별 1줄 수용 한글 환산 글자 수 (A4 170mm 기준)
+# -N%  자간 → 수용 글자 ≈ 0% 기준값 / (1 - N/100)
+_BODY_LINE_0     = 33  # 휴먼명조 15pt, 자간  0%
 _BODY_LINE_NEG10 = 37  # 휴먼명조 15pt, 자간 -10%
-_REF_LINE_0      = 37  # 중고딕 13pt,   자간 0%
+_BODY_LINE_NEG20 = 41  # 휴먼명조 15pt, 자간 -20%
+_REF_LINE_0      = 37  # 중고딕 13pt,   자간  0%
 _REF_LINE_NEG10  = 41  # 중고딕 13pt,   자간 -10%
+_REF_LINE_NEG20  = 46  # 중고딕 13pt,   자간 -20%
 
 
 def _ko_char_len(text: str) -> float:
@@ -203,10 +218,16 @@ def _is_new_item(line: str) -> bool:
     return False
 
 
-def _para_body(para_id: int, line: str) -> str:
-    """본문 단락. 접두사(마커·라벨)는 자간 0%, 내용부는 두 임계값으로 자간 자동 선택.
-    내용이 ①자간 0%로 들어감 → 0%, ②자간 -10%로만 들어감 → -10%,
-    ③-10%로도 초과 → 0%(자연 줄바꿈)."""
+def _para_body(para_id: int, line: str, force_single: bool = False) -> str:
+    """본문 단락. 접두사(마커·라벨)는 자간 0%, 내용부는 임계값으로 자간 자동 선택.
+
+    force_single=False (기본, 본문):
+      ①자간 0%로 들어감 → 0%, ②자간 -10%로만 들어감 → -10%,
+      ③-10%로도 초과 → 0%(자연 줄바꿈 허용)
+
+    force_single=True (주관자 블록):
+      -10%로도 안 되면 -20%까지 압축하여 최대한 1줄 유지
+    """
     s = line.lstrip()
 
     # 섹션 제목: 자간 0% 단일 run
@@ -222,8 +243,10 @@ def _para_body(para_id: int, line: str) -> str:
     is_ref   = s.startswith('【') or s.startswith('*')
     line_0   = _REF_LINE_0    if is_ref else _BODY_LINE_0
     line_n10 = _REF_LINE_NEG10 if is_ref else _BODY_LINE_NEG10
-    cpr_0    = 13 if is_ref else 12  # 자간 0%
+    line_n20 = _REF_LINE_NEG20 if is_ref else _BODY_LINE_NEG20
+    cpr_0    = 13 if is_ref else 12  # 자간  0%
     cpr_n10  = 11 if is_ref else 10  # 자간 -10%
+    cpr_n20  = 15 if is_ref else 14  # 자간 -20% (강제 1줄용)
 
     prefix, content = _split_line(line)
     pfx_len  = _ko_char_len(prefix)
@@ -231,8 +254,16 @@ def _para_body(para_id: int, line: str) -> str:
     cap_0    = line_0   - pfx_len
     cap_n10  = line_n10 - pfx_len
 
-    # 내용이 0% 한도 초과 & -10% 한도 이내일 때만 -10% 적용
-    content_cpr = cpr_n10 if (ctn_len > cap_0 and ctn_len <= cap_n10) else cpr_0
+    if force_single:
+        # 주관자 블록: -10% → -20% 순으로 단계적 압축
+        content_cpr = (
+            cpr_0   if ctn_len <= cap_0 else
+            cpr_n10 if ctn_len <= cap_n10 else
+            cpr_n20  # -20%까지 압축하여 최대한 1줄 유지
+        )
+    else:
+        # 기존 로직: 0%→-10%, 그래도 안 되면 0%(자연 줄바꿈)
+        content_cpr = cpr_n10 if (ctn_len > cap_0 and ctn_len <= cap_n10) else cpr_0
 
     if not content:
         return (
@@ -356,13 +387,26 @@ def generate_hwpx(content: str, title: str = "보고서") -> bytes:
 
     line1 = _strip_bullet(summary_lines[0]) if len(summary_lines) > 0 else ''
     line2 = _strip_bullet(summary_lines[1]) if len(summary_lines) > 1 else ''
-    rect_xml = rect_xml.replace(
-        '{{summary_line_1}}', html.escape(line1, quote=False)
-    ).replace(
-        '{{summary_line_2}}', html.escape(line2, quote=False)
-    )
 
-    # * 참고줄을 rect 내부(</hs:sub-list> 앞)에 삽입 — 박스 바깥으로 빠지지 않도록
+    # {{summary_line_1}} 치환
+    rect_xml = rect_xml.replace('{{summary_line_1}}', html.escape(line1, quote=False))
+
+    # {{summary_line_2}} 치환: 내용이 없으면 ◈ 기호만 남는 빈 단락이 생기므로 단락째 제거
+    if line2:
+        rect_xml = rect_xml.replace('{{summary_line_2}}', html.escape(line2, quote=False))
+    else:
+        # 플레이스홀더 위치를 기점으로 해당 <hp:p>...</hp:p> 블록만 제거
+        # (regex DOTALL은 앞 단락까지 삼켜버리므로 문자열 위치 탐색 사용)
+        _marker = '{{summary_line_2}}'
+        _pos = rect_xml.find(_marker)
+        if _pos != -1:
+            _p_start = rect_xml.rfind('<hp:p', 0, _pos)
+            _p_end   = rect_xml.find('</hp:p>', _pos) + len('</hp:p>')
+            if _p_start != -1 and _p_end > len('</hp:p>') - 1:
+                rect_xml = rect_xml[:_p_start] + rect_xml[_p_end:]
+
+    # * 참고줄을 rect 내부(</hp:subList> 앞)에 삽입 — 박스 바깥으로 빠지지 않도록
+    # ※ 태그명은 hp:subList (camelCase) — hs:sub-list 아님
     if summary_ref_lines:
         ref_paras_xml = ''.join(
             f'<hp:p id="{3_000_000 + i}" paraPrIDRef="0" styleIDRef="0" '
@@ -371,7 +415,7 @@ def generate_hwpx(content: str, title: str = "보고서") -> bytes:
             f'</hp:p>'
             for i, ln in enumerate(summary_ref_lines)
         )
-        rect_xml = rect_xml.replace('</hs:sub-list>', ref_paras_xml + '</hs:sub-list>', 1)
+        rect_xml = rect_xml.replace('</hp:subList>', ref_paras_xml + '</hp:subList>', 1)
 
     summary_para = (
         '<hp:p id="2692885479" paraPrIDRef="0" styleIDRef="0" '
@@ -383,17 +427,19 @@ def generate_hwpx(content: str, title: str = "보고서") -> bytes:
     )
 
     # ── 주관자 블록 단락 생성 (요약 앞) ─────────────────────────
+    # force_single=True: 자간 -20%까지 단계적 압축으로 각 줄이 1줄에 들어오도록 최대화
     pre_paragraphs = []
     for i, line in enumerate(pre_summary_lines):
         pid = 1_000_000 + i
         if line.strip() == "":
             pre_paragraphs.append(_para_empty(pid))
         else:
-            pre_paragraphs.append(_para_body(pid, line))
+            pre_paragraphs.append(_para_body(pid, line, force_single=True))
 
     # ── 본문 단락 생성 (연속 줄은 하나의 단락으로 합침) ─────────
     # AI가 35~40자 줄바꿈을 삽입하더라도 HWPX에서는 단락 내 word-wrap에 맡김.
     # 새 항목 마커(□·◦·-·*·【·번호.)로 시작하지 않는 줄은 이전 단락에 이어 붙임.
+    # L1 섹션 제목(번호.) 앞에는 스타일가이드 규정에 따라 빈 줄 1개를 자동 삽입.
     body_lines = lines[body_start_idx:]
     while body_lines and body_lines[0].strip() == "":
         body_lines.pop(0)
@@ -401,6 +447,7 @@ def generate_hwpx(content: str, title: str = "보고서") -> bytes:
     paragraphs = []
     para_pid = 2_000_000
     cur_line: str | None = None
+    prev_was_empty = True   # 첫 섹션 앞에는 빈 줄 삽입 안 함
 
     for line in body_lines:
         if line.strip() == "":
@@ -410,10 +457,18 @@ def generate_hwpx(content: str, title: str = "보고서") -> bytes:
                 cur_line = None
             paragraphs.append(_para_empty(para_pid))
             para_pid += 1
+            prev_was_empty = True
         elif _is_new_item(line):
             if cur_line is not None:
                 paragraphs.append(_para_body(para_pid, cur_line))
                 para_pid += 1
+                cur_line = None
+                prev_was_empty = False
+            # L1 섹션 제목 앞: 빈 줄이 없으면 자동 삽입 (스타일가이드: 목차 전환 시 1칸 띄움)
+            if re.match(r'^\d+\.', line.strip()) and paragraphs and not prev_was_empty:
+                paragraphs.append(_para_empty(para_pid))
+                para_pid += 1
+                prev_was_empty = True
             cur_line = line
         else:
             # 연속 줄 — 이전 단락에 이어 붙임 (공백 1칸)
@@ -421,6 +476,7 @@ def generate_hwpx(content: str, title: str = "보고서") -> bytes:
                 cur_line += " " + line.strip()
             else:
                 cur_line = line
+            prev_was_empty = False
 
     if cur_line is not None:
         paragraphs.append(_para_body(para_pid, cur_line))
